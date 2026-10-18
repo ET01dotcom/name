@@ -933,6 +933,31 @@ if (inTelegram && tg.MainButton) {
   document.querySelector("main").style.paddingBottom = "24px";
 }
 
+// Scroll the focused field into view, below the sticky header (waits for the keyboard to open)
+document.addEventListener("focusin", (e) => {
+  const el = e.target;
+  if (!(el instanceof HTMLInputElement)) return;
+  setTimeout(() => {
+    const headerH = document.querySelector("header")?.offsetHeight || 0;
+    const top = el.getBoundingClientRect().top + window.scrollY - headerH - 16;
+    window.scrollTo({ top, behavior: "smooth" });
+  }, 300);
+});
+
+// Enter moves to the next visible text or number field
+document.getElementById("prodForm").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || !(e.target instanceof HTMLInputElement)) return;
+  if (e.target.type === "file" || e.target.readOnly) return;
+  const fields = [...document.querySelectorAll(
+    '#prodForm input:not([type="radio"]):not([type="file"]):not([readonly])'
+  )].filter((el) => el.offsetParent !== null);
+  const i = fields.indexOf(e.target);
+  if (i >= 0 && i < fields.length - 1) {
+    e.preventDefault();
+    fields[i + 1].focus();
+  }
+});
+
 // Orb reacts while the person edits the form
 let draftTimer = null;
 document.getElementById("prodForm").addEventListener("input", () => {
