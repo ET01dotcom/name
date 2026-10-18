@@ -175,6 +175,31 @@
   .mode input:focus-visible + .radio { box-shadow: 0 0 0 3px rgba(77,163,255,.4); }
   .other-input { margin-left: 30px; margin-top: 2px; }
   .other-input[hidden] { display: none; }
+  .mode-row { display: flex; align-items: center; gap: 8px; }
+  .mode-row .mode { flex: 1; min-width: 0; }
+  .box {
+    width: 20px; height: 20px; border-radius: 6px; flex: none;
+    border: 2px solid var(--muted); display: grid; place-items: center;
+    transition: background .15s, border-color .15s;
+  }
+  .box::after {
+    content: ""; width: 9px; height: 5px; margin-top: -2px;
+    border-left: 2px solid #fff; border-bottom: 2px solid #fff;
+    transform: rotate(-45deg) scale(0); transition: transform .15s;
+  }
+  .mode input:checked + .box { background: var(--primary); border-color: var(--primary); }
+  .mode input:checked + .box::after { transform: rotate(-45deg) scale(1); }
+  .mode input:focus-visible + .box { box-shadow: 0 0 0 3px rgba(77,163,255,.4); }
+  .mode-count {
+    width: 84px; height: 36px; flex: none; padding: 0 8px; text-align: center;
+    border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2);
+    color: var(--text); font: inherit; font-size: 14px; outline: none;
+  }
+  .mode-count:disabled { opacity: .45; }
+  .mode-count:focus { border-color: var(--ring); }
+  .mode-other { width: 100%; height: 36px; margin: 6px 0 0 30px; width: calc(100% - 30px); }
+  .mode-status { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .mode-status.error { color: var(--critical); }
 
   /* Photos */
   .dropzone {
@@ -368,7 +393,7 @@
               </div>
               <span class="think-orb" id="thinkOrb" aria-hidden="true"></span>
             </div>
-            <div class="modes" role="radiogroup" aria-labelledby="modeLabel">
+            <div class="modes" id="modesList" role="group" aria-labelledby="modeLabel">
               <label class="mode"><input type="radio" name="mode" value="ตูดร้าวทะลุ" /><span class="radio"></span>ตูดร้าวทะลุ</label>
               <label class="mode"><input type="radio" name="mode" value="ขอบแตกบน" /><span class="radio"></span>ขอบแตกบน</label>
               <label class="mode"><input type="radio" name="mode" value="เยื่อเน่า" /><span class="radio"></span>เยื่อเน่า</label>
@@ -745,15 +770,92 @@ function updatePercent() {
   pctEl.value = total > 0 ? ((bad / total) * 100).toFixed(1) : "";
 }
 goodEl.addEventListener("input", updatePercent);
-badEl.addEventListener("input", updatePercent);
-
-document.querySelectorAll('input[name="mode"]').forEach((r) => {
-  r.addEventListener("change", () => {
-    const showOther = $("modeOther").checked;
-    otherWrap.hidden = !showOther;
-    if (showOther) otherText.focus();
-  });
+badEl.addEventListener("input", () => {
+  updatePercent();
+  updateModeStatus();
 });
+
+/* =========================================================
+   DEFECT MODES — each checked mode gets a piece count
+   ========================================================= */
+const MODE_OPTIONS = ["ตูดร้าวทะลุ", "ขอบแตกบน", "เยื่อเน่า", "จุดดำ", "อื่นๆ"];
+
+function renderModes() {
+  const list = $("modesList");
+  list.innerHTML = "";
+  MODE_OPTIONS.forEach((name) => {
+    const row = document.createElement("div");
+    row.className = "mode-row";
+    row.dataset.mode = name;
+    row.innerHTML = `
+      <label class="mode"><input type="checkbox" class="mode-check" /><span class="box"></span><span>${name}</span></label>
+      <input class="mode-count" type="number" min="1" step="1" inputmode="numeric" placeholder="ชิ้น" aria-label="จำนวนชิ้น ${name}" disabled />`;
+    list.appendChild(row);
+    if (name === "อื่นๆ") {
+      const other = document.createElement("input");
+      other.type = "text";
+      other.className = "mode-other";
+      other.placeholder = "ระบุเพิ่มเติม...";
+      other.setAttribute("aria-label", "ระบุโหมดอื่นๆ");
+      other.hidden = true;
+      other.disabled = true;
+      list.appendChild(other);
+    }
+  });
+  const status = document.createElement("div");
+  status.id = "modeStatus";
+  status.className = "mode-status";
+  list.appendChild(status);
+
+  list.querySelectorAll(".mode-check").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const row = cb.closest(".mode-row");
+      const count = row.querySelector(".mode-count");
+      count.disabled = !cb.checked;
+      if (!cb.checked) count.value = "";
+      if (row.dataset.mode === "อื่นๆ") {
+        const other = row.nextElementSibling;
+        other.hidden = !cb.checked;
+        other.disabled = !cb.checked;
+        if (!cb.checked) other.value = "";
+      }
+      updateModeStatus();
+    });
+  });
+  list.querySelectorAll(".mode-count").forEach((el) => el.addEventListener("input", updateModeStatus));
+  list.querySelectorAll(".mode-other").forEach((el) => el.addEventListener("input", updateModeStatus));
+}
+
+/** Checked modes with their counts, e.g. [{ mode: "ขอบแตกบน", count: 3 }]. */
+function getDefects() {
+  return [...document.querySelectorAll("#modesList .mode-row")]
+    .filter((row) => row.querySelector(".mode-check").checked)
+    .map((row) => {
+      const name = row.dataset.mode;
+      const label = name === "อื่นๆ"
+        ? (row.nextElementSibling?.value.trim() || "")
+        : name;
+      return { mode: label, count: parseInt(row.querySelector(".mode-count").value, 10) || 0 };
+    });
+}
+
+/** Shows how many of the bad pieces are already assigned to a mode. */
+function updateModeStatus() {
+  const status = $("modeStatus");
+  if (!status) return;
+  const defects = getDefects();
+  if (!defects.length) {
+    status.textContent = "";
+    status.classList.remove("error");
+    return;
+  }
+  const sum = defects.reduce((a, d) => a + d.count, 0);
+  const bad = parseInt(badEl.value, 10) || 0;
+  status.textContent = `แบ่งแล้ว ${sum} / ${bad} ชิ้น`;
+  status.classList.toggle("error", sum !== bad);
+}
+
+renderModes();
 
 /* =========================================================
    PHOTOS
@@ -832,9 +934,7 @@ function toast(msg, isError = false) {
 
 function getFormData() {
   const shift = document.querySelector('input[name="shift"]:checked')?.value ?? "day";
-  const modeInput = document.querySelector('input[name="mode"]:checked');
-  let mode = modeInput?.value ?? "";
-  if (mode === "อื่นๆ") mode = otherText.value.trim() || "อื่นๆ";
+  const defects = getDefects();
   return {
     date: dateEl.value,
     shift,
@@ -842,19 +942,24 @@ function getFormData() {
     good: parseInt(goodEl.value, 10) || 0,
     bad: parseInt(badEl.value, 10) || 0,
     defect_percent: pctEl.value ? parseFloat(pctEl.value) : null,
-    mode,
+    // readable summary for the sheet and Telegram, e.g. "ขอบแตกบน 3 ชิ้น, จุดดำ 2 ชิ้น"
+    mode: defects.map((d) => `${d.mode} ${d.count} ชิ้น`).join(", "),
+    defects,
     photo_count: photos.length,
   };
 }
 
 function validate() {
   const d = getFormData();
-  const modeChecked = document.querySelector('input[name="mode"]:checked');
+  const defects = getDefects();
   if (!d.date) return "กรุณาเลือกวันที่";
   if (!d.time) return "กรุณาเลือกเวลา";
   if (goodEl.value === "" && badEl.value === "") return "กรุณากรอกจำนวนงานดีหรืองานเสีย";
-  if (!modeChecked) return "กรุณาเลือกโหมด";
-  if (modeChecked.value === "อื่นๆ" && !otherText.value.trim()) return "กรุณาระบุโหมดอื่นๆ";
+  if (d.bad > 0 && defects.length === 0) return "กรุณาเลือกโหมดของงานเสีย";
+  if (defects.some((x) => !x.mode)) return "กรุณาระบุโหมดอื่นๆ";
+  if (defects.some((x) => x.count < 1)) return "กรุณาใส่จำนวนชิ้นของทุกโหมดที่เลือก";
+  const sum = defects.reduce((a, x) => a + x.count, 0);
+  if (sum !== d.bad) return `จำนวนแยกตามโหมดรวม ${sum} ชิ้น ต้องเท่ากับงานเสีย ${d.bad} ชิ้น`;
   if (photos.length < CONFIG.MIN_PHOTOS) return `กรุณาแนบรูปอย่างน้อย ${CONFIG.MIN_PHOTOS} รูป`;
   return null;
 }
