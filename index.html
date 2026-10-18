@@ -136,7 +136,7 @@
   .segmented input { position: absolute; opacity: 0; pointer-events: none; }
   .segmented label {
     display: flex; align-items: center; justify-content: center; gap: 6px;
-    height: 40px; border-radius: 10px; cursor: pointer;
+    height: 40px; border-radius: 10px; cursor: pointer; white-space: nowrap;
     background: var(--surface-2); color: var(--muted);
     font-size: 14px; border: 1px solid transparent;
     transition: background .2s, color .2s;
@@ -147,10 +147,10 @@
   .segmented input:focus-visible + label { box-shadow: 0 0 0 3px rgba(77,163,255,.4); }
 
   /* Defect mode */
-  .modes { position: relative; display: flex; flex-direction: column; gap: 10px; padding-left: 130px; }
+  .modes { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .mode-side { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
   .think-orb {
-    position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-    width: 120px; height: 120px; pointer-events: none;
+    width: 96px; height: 96px; flex: none; pointer-events: none;
     display: grid; place-items: center;
   }
   .think-orb canvas { display: block; }
@@ -359,12 +359,14 @@
         <!-- Defect mode -->
         <div class="section">
           <div class="field" style="grid-template-columns: 110px 1fr; align-items: start;">
-            <div class="label" id="modeLabel">
-              <span class="mini-orb" data-state="thinking" aria-hidden="true"></span>
-              โหมด
+            <div class="mode-side">
+              <div class="label" id="modeLabel">
+                <span class="mini-orb" data-state="thinking" aria-hidden="true"></span>
+                โหมด
+              </div>
+              <span class="think-orb" id="thinkOrb" aria-hidden="true"></span>
             </div>
             <div class="modes" role="radiogroup" aria-labelledby="modeLabel">
-              <span class="think-orb" id="thinkOrb" aria-hidden="true"></span>
               <label class="mode"><input type="radio" name="mode" value="ตูดร้าวทะลุ" /><span class="radio"></span>ตูดร้าวทะลุ</label>
               <label class="mode"><input type="radio" name="mode" value="ขอบแตกบน" /><span class="radio"></span>ขอบแตกบน</label>
               <label class="mode"><input type="radio" name="mode" value="เยื่อเน่า" /><span class="radio"></span>เยื่อเน่า</label>
@@ -704,7 +706,7 @@ const orb = new Orb(document.getElementById("orb"));
 document.querySelectorAll(".mini-orb").forEach((el) => {
   new Orb(el, 22, el.dataset.state, true);
 });
-new Orb(document.getElementById("thinkOrb"), 120, "thinking", true);
+new Orb(document.getElementById("thinkOrb"), 96, "thinking", true);
 
 /* =========================================================
    FORM STATE
