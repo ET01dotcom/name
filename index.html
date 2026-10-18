@@ -241,12 +241,14 @@
   .submit:disabled { opacity: .6; cursor: not-allowed; }
   .submit:focus-visible { outline: 3px solid rgba(16,185,129,.5); outline-offset: 2px; }
 
+  /* Pinned near the top-left, where the form starts, so it stays visible in desktop windows */
   .toast {
-    position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%);
-    background: var(--surface-2); border: 1px solid var(--border);
+    position: fixed; top: 76px; left: 16px; z-index: 20;
+    background: var(--surface); border: 1px solid var(--border);
     padding: 10px 16px; border-radius: 10px; font-size: 14px;
+    box-shadow: 0 4px 14px rgba(15,23,42,.12);
     opacity: 0; pointer-events: none; transition: opacity .2s;
-    max-width: calc(100% - 32px);
+    max-width: min(420px, calc(100vw - 32px));
   }
   .toast.show { opacity: 1; }
   .toast.error { border-color: var(--critical); color: #b91c1c; }
