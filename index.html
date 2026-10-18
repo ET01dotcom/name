@@ -200,6 +200,25 @@
   .mode-other { width: 100%; height: 36px; margin: 6px 0 0 30px; width: calc(100% - 30px); }
   .mode-status { font-size: 12px; color: var(--muted); margin-top: 4px; }
   .mode-status.error { color: var(--critical); }
+  .mode-badge { margin-left: auto; font-size: 12px; color: var(--primary); font-weight: 600; white-space: nowrap; }
+  .pop-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.35); z-index: 30; }
+  .pop-backdrop[hidden] { display: none; }
+  /* Pinned to the top-left like the form, so it stays visible in desktop windows */
+  .pop-card {
+    position: absolute; left: 16px; top: 96px;
+    width: min(340px, calc(100vw - 32px));
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px; display: grid; gap: 10px;
+    box-shadow: 0 10px 30px rgba(15,23,42,.2);
+  }
+  .pop-title { font-size: 15px; font-weight: 600; }
+  .pop-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+  .btn {
+    height: 40px; padding: 0 16px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    font: inherit; font-size: 14px;
+  }
+  .btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); }
 
   /* Photos */
   .dropzone {
@@ -435,6 +454,19 @@
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
     บันทึกข้อมูล
   </button>
+</div>
+
+<!-- Count popup for a defect mode -->
+<div class="pop-backdrop" id="countPop" hidden>
+  <div class="pop-card" role="dialog" aria-modal="true" aria-labelledby="popTitle">
+    <div class="pop-title" id="popTitle">จำนวนชิ้น</div>
+    <input type="text" id="popName" placeholder="ระบุชื่อโหมด" hidden />
+    <input type="number" id="popCount" min="1" step="1" inputmode="numeric" placeholder="จำนวน (ชิ้น)" />
+    <div class="pop-actions">
+      <button type="button" class="btn" id="popCancel">ยกเลิก</button>
+      <button type="button" class="btn btn-primary" id="popOk">ตกลง</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -779,6 +811,7 @@ badEl.addEventListener("input", () => {
    DEFECT MODES — each checked mode gets a piece count
    ========================================================= */
 const MODE_OPTIONS = ["ตูดร้าวทะลุ", "ขอบแตกบน", "เยื่อเน่า", "จุดดำ", "อื่นๆ"];
+let activeRow = null;
 
 function renderModes() {
   const list = $("modesList");
@@ -787,20 +820,10 @@ function renderModes() {
     const row = document.createElement("div");
     row.className = "mode-row";
     row.dataset.mode = name;
-    row.innerHTML = `
-      <label class="mode"><input type="checkbox" class="mode-check" /><span class="box"></span><span>${name}</span></label>
-      <input class="mode-count" type="number" min="1" step="1" inputmode="numeric" placeholder="ชิ้น" aria-label="จำนวนชิ้น ${name}" disabled />`;
+    row.dataset.count = "";
+    row.dataset.name = "";
+    row.innerHTML = `<label class="mode"><input type="checkbox" class="mode-check" /><span class="box"></span><span class="mode-name">${name}</span><span class="mode-badge"></span></label>`;
     list.appendChild(row);
-    if (name === "อื่นๆ") {
-      const other = document.createElement("input");
-      other.type = "text";
-      other.className = "mode-other";
-      other.placeholder = "ระบุเพิ่มเติม...";
-      other.setAttribute("aria-label", "ระบุโหมดอื่นๆ");
-      other.hidden = true;
-      other.disabled = true;
-      list.appendChild(other);
-    }
   });
   const status = document.createElement("div");
   status.id = "modeStatus";
@@ -810,33 +833,84 @@ function renderModes() {
   list.querySelectorAll(".mode-check").forEach((cb) => {
     cb.addEventListener("change", () => {
       const row = cb.closest(".mode-row");
-      const count = row.querySelector(".mode-count");
-      count.disabled = !cb.checked;
-      if (!cb.checked) count.value = "";
-      if (row.dataset.mode === "อื่นๆ") {
-        const other = row.nextElementSibling;
-        other.hidden = !cb.checked;
-        other.disabled = !cb.checked;
-        if (!cb.checked) other.value = "";
-      }
-      updateModeStatus();
+      if (cb.checked) openCountPop(row);
+      else clearRow(row);
     });
   });
-  list.querySelectorAll(".mode-count").forEach((el) => el.addEventListener("input", updateModeStatus));
-  list.querySelectorAll(".mode-other").forEach((el) => el.addEventListener("input", updateModeStatus));
+
+  $("popOk").addEventListener("click", confirmPop);
+  $("popCancel").addEventListener("click", () => closePop(false));
+  $("countPop").addEventListener("click", (e) => {
+    if (e.target === $("countPop")) closePop(false);
+  });
+  $("popCount").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") confirmPop();
+  });
+  $("popName").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $("popCount").focus();
+  });
+}
+
+function clearRow(row) {
+  row.dataset.count = "";
+  row.dataset.name = "";
+  row.querySelector(".mode-badge").textContent = "";
+  row.querySelector(".mode-check").checked = false;
+  updateModeStatus();
+}
+
+function openCountPop(row) {
+  activeRow = row;
+  const isOther = row.dataset.mode === "อื่นๆ";
+  $("popTitle").textContent = isOther ? "อื่นๆ: ระบุโหมดและจำนวน" : `จำนวนชิ้น: ${row.dataset.mode}`;
+  $("popName").hidden = !isOther;
+  $("popName").value = row.dataset.name || "";
+  $("popCount").value = row.dataset.count || "";
+  $("countPop").hidden = false;
+  (isOther ? $("popName") : $("popCount")).focus();
+}
+
+/** Closes the popup. Cancelling a brand-new selection unticks the mode again. */
+function closePop(confirmed) {
+  const row = activeRow;
+  $("countPop").hidden = true;
+  activeRow = null;
+  if (row && !confirmed && !row.dataset.count) {
+    row.querySelector(".mode-check").checked = false;
+  }
+  updateModeStatus();
+}
+
+function confirmPop() {
+  const row = activeRow;
+  if (!row) return;
+  const count = parseInt($("popCount").value, 10) || 0;
+  const isOther = row.dataset.mode === "อื่นๆ";
+  const name = $("popName").value.trim();
+  if (count < 1) {
+    toast("กรุณาใส่จำนวนชิ้นอย่างน้อย 1", true);
+    $("popCount").focus();
+    return;
+  }
+  if (isOther && !name) {
+    toast("กรุณาระบุชื่อโหมดอื่นๆ", true);
+    $("popName").focus();
+    return;
+  }
+  row.dataset.count = String(count);
+  row.dataset.name = isOther ? name : "";
+  row.querySelector(".mode-badge").textContent = isOther ? `${name} · ${count} ชิ้น` : `${count} ชิ้น`;
+  closePop(true);
 }
 
 /** Checked modes with their counts, e.g. [{ mode: "ขอบแตกบน", count: 3 }]. */
 function getDefects() {
   return [...document.querySelectorAll("#modesList .mode-row")]
-    .filter((row) => row.querySelector(".mode-check").checked)
-    .map((row) => {
-      const name = row.dataset.mode;
-      const label = name === "อื่นๆ"
-        ? (row.nextElementSibling?.value.trim() || "")
-        : name;
-      return { mode: label, count: parseInt(row.querySelector(".mode-count").value, 10) || 0 };
-    });
+    .filter((row) => row.querySelector(".mode-check").checked && Number(row.dataset.count) > 0)
+    .map((row) => ({
+      mode: row.dataset.mode === "อื่นๆ" ? row.dataset.name : row.dataset.mode,
+      count: Number(row.dataset.count),
+    }));
 }
 
 /** Shows how many of the bad pieces are already assigned to a mode. */
