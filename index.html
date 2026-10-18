@@ -147,9 +147,9 @@
   .segmented input:focus-visible + label { box-shadow: 0 0 0 3px rgba(77,163,255,.4); }
 
   /* Defect mode */
-  .modes { position: relative; display: flex; flex-direction: column; gap: 10px; }
+  .modes { position: relative; display: flex; flex-direction: column; gap: 10px; padding-left: 130px; }
   .think-orb {
-    position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+    position: absolute; left: 0; top: 50%; transform: translateY(-50%);
     width: 120px; height: 120px; pointer-events: none;
     display: grid; place-items: center;
   }
@@ -793,7 +793,12 @@ function addFiles(fileList) {
   const room = CONFIG.MAX_PHOTOS - photos.length;
   if (files.length > room) toast(`เพิ่มได้สูงสุด ${CONFIG.MAX_PHOTOS} รูป`, true);
   files.slice(0, room).forEach((file) => {
-    photos.push({ file, url: URL.createObjectURL(file) });
+    // Compress while the photo is picked so submitting does not wait for it
+    photos.push({
+      file,
+      url: URL.createObjectURL(file),
+      b64: toJpegBase64(file).catch(() => null),
+    });
   });
   photoInput.value = "";
   renderPhotos();
@@ -860,7 +865,8 @@ async function toJpegBase64(file, maxSide = 1280, quality = 0.75) {
   return canvas.toDataURL("image/jpeg", quality).split(",")[1];
 }
 
-async function submit() {
+/** Submit without a waiting spinner: feedback is immediate, the upload runs in the background. */
+function submit() {
   const err = validate();
   if (err) {
     orb.set("error");
@@ -868,16 +874,20 @@ async function submit() {
     return;
   }
 
-  setBusy(true);
-  orb.set("thinking");
   const data = getFormData();
+  const snapshot = [...photos];
+  orb.set("streaming");
+  toast("รับข้อมูลแล้ว กำลังส่ง...");
+  tg?.HapticFeedback?.impactOccurred("light");
+  upload(data, snapshot);
+}
 
+async function upload(data, snapshot) {
   try {
+    const images = await Promise.all(snapshot.map((p) => p.b64));
+    if (images.some((b) => !b)) throw new Error("อ่านไฟล์รูปบางไฟล์ไม่ได้");
+
     if (CONFIG.API_URL) {
-      orb.set("tool-call");
-      const images = [];
-      for (const p of photos) images.push(await toJpegBase64(p.file));
-      orb.set("streaming");
       // text/plain avoids a CORS preflight; the server parses the JSON body itself
       const res = await fetch(CONFIG.API_URL, {
         method: "POST",
@@ -888,13 +898,11 @@ async function submit() {
       if (!json.ok) throw new Error(json.error || "บันทึกไม่สำเร็จ");
     } else if (tg?.sendData) {
       // sendData จำกัดขนาด 4096 bytes และไม่รองรับไฟล์ จึงส่งเฉพาะข้อมูล
-      orb.set("streaming");
       tg.sendData(JSON.stringify(data));
       return;
     } else {
       // โหมดทดสอบในเบราว์เซอร์
-      orb.set("reasoning");
-      await new Promise((r) => setTimeout(r, 900));
+      await new Promise((r) => setTimeout(r, 300));
     }
 
     orb.set("done");
@@ -905,16 +913,6 @@ async function submit() {
     orb.set("error");
     toast("บันทึกไม่สำเร็จ: " + (e.message || e), true);
     tg?.HapticFeedback?.notificationOccurred("error");
-  } finally {
-    setBusy(false);
-  }
-}
-
-function setBusy(busy) {
-  submitBtn.disabled = busy;
-  if (tg?.MainButton) {
-    if (busy) tg.MainButton.showProgress(false);
-    else tg.MainButton.hideProgress();
   }
 }
 
